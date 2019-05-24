@@ -1,0 +1,50 @@
+CREATE QUERY shallow_nn(/* Parameters here */) FOR GRAPH MyGraph { 
+  SumAccum<FLOAT> @b;
+        MapAccum<VERTEX, FLOAT> @w;
+        MapAccum<INT, FLOAT> @a, @z;
+        INT size0, size1;
+        
+        # Initialization
+        Layer0 = {layer0.*};
+        Layer1 = SELECT t
+                 FROM Layer0:s -(layer0_to_layer1:e) -> :t
+                 ACCUM t.@w += (s -> 1);
+        Layer2 = SELECT t
+                 FROM Layer1:s -(layer1_to_layer2:e) -> :t
+                 ACCUM t.@w += (s -> 1);
+        size0 = Layer0.size();
+        size1 = Layer1.size();
+        
+        # Propagation
+        Layer1 = SELECT t
+                 FROM Layer0:s -(layer0_to_layer1:e) -> :t
+                 ACCUM FLOAT wt = t.@w.get(s),
+                       INT i = 0,
+                       FOREACH v IN s.xvalue DO   # iterate each sample
+                           t.@z += (i -> wt * v + t.@b/size0),
+                           i = i + 1
+                       END
+                 POST-ACCUM FOREACH (n,v) IN t.@z DO    # ReLU
+                                IF v > 0 THEN
+                                    t.@a += (n -> v)
+                                ELSE 
+                                    t.@a += (n -> 0)
+                                END
+                            END;
+        
+        PRINT Layer1;
+        Layer2 = SELECT t
+                 FROM Layer1:s -(layer1_to_layer2:e) -> :t
+                 ACCUM FLOAT wt = t.@w.get(s),
+                       FOREACH (n,v) IN s.@a DO
+                           t.@z += (n -> wt*v + t.@b/size1)
+                       END
+                 POST-ACCUM FOREACH (n,v) IN t.@z DO    # ReLU
+                                IF v > 0 THEN
+                                    t.@a += (n -> v)
+                                ELSE 
+                                    t.@a += (n -> 0)
+                                END
+                            END;
+        PRINT Layer2;
+}
