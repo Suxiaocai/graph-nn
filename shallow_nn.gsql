@@ -1,50 +1,65 @@
-CREATE QUERY shallow_nn(/* Parameters here */) FOR GRAPH MyGraph { 
-  SumAccum<FLOAT> @b;
-        MapAccum<VERTEX, FLOAT> @w;
-        MapAccum<INT, FLOAT> @a, @z;
-        INT size0, size1;
+use graph NN
+
+CREATE QUERY shallow_nn() FOR GRAPH NN{ 
+  SumAccum<DOUBLE> @b, @@loss;
+        MapAccum<VERTEX, DOUBLE> @w;
+        MapAccum<INT, DOUBLE> @a, @z;
+        INT size0, size1, m=400;
         
         # Initialization
-        Layer0 = {layer0.*};
+        Layer0 = {inputLayer.*};
         Layer1 = SELECT t
-                 FROM Layer0:s -(layer0_to_layer1:e) -> :t
-                 ACCUM t.@w += (s -> 1);
+                 FROM Layer0:s -(input_hidden:e) -> :t
+                 ACCUM IF s.name == "x1" THEN
+                                 t.@w += (s -> t.w.get(0))
+                             ELSE
+                                 t.@w += (s -> t.w.get(1))
+                             END;
         Layer2 = SELECT t
-                 FROM Layer1:s -(layer1_to_layer2:e) -> :t
-                 ACCUM t.@w += (s -> 1);
+                 FROM Layer1:s -(hidden_output:e) -> :t
+                 ACCUM INT i=1,
+                             FOREACH val IN t.w DO
+                                 IF (s.name == "n1" AND i ==1) OR (s.name == "n2" AND i ==2) OR (s.name == "n3" AND i ==3) OR (s.name == "n4" AND i ==4) THEN
+                                     t.@w += (s -> val)
+                                 END,
+                                 i = i + 1
+                             END;
         size0 = Layer0.size();
         size1 = Layer1.size();
         
         # Propagation
         Layer1 = SELECT t
-                 FROM Layer0:s -(layer0_to_layer1:e) -> :t
-                 ACCUM FLOAT wt = t.@w.get(s),
+                 FROM Layer0:s -(input_hidden:e) -> :t
+                 ACCUM DOUBLE wt = t.@w.get(s),
                        INT i = 0,
                        FOREACH v IN s.xvalue DO   # iterate each sample
                            t.@z += (i -> wt * v + t.@b/size0),
+                                 #log(TRUE, s, i, wt, v, t.@b/size0),
                            i = i + 1
                        END
-                 POST-ACCUM FOREACH (n,v) IN t.@z DO    # ReLU
-                                IF v > 0 THEN
-                                    t.@a += (n -> v)
-                                ELSE 
-                                    t.@a += (n -> 0)
-                                END
+                 POST-ACCUM FOREACH (n,v) IN t.@z DO    # tanh activation function
+                                t.@a += (n -> tanh(v))
                             END;
         
-        PRINT Layer1;
         Layer2 = SELECT t
-                 FROM Layer1:s -(layer1_to_layer2:e) -> :t
-                 ACCUM FLOAT wt = t.@w.get(s),
+                 FROM Layer1:s -(hidden_output:e) -> :t
+                 ACCUM DOUBLE wt = t.@w.get(s),
                        FOREACH (n,v) IN s.@a DO
                            t.@z += (n -> wt*v + t.@b/size1)
                        END
-                 POST-ACCUM FOREACH (n,v) IN t.@z DO    # ReLU
-                                IF v > 0 THEN
-                                    t.@a += (n -> v)
-                                ELSE 
-                                    t.@a += (n -> 0)
-                                END
-                            END;
-        PRINT Layer2;
+                 POST-ACCUM DOUBLE a_i = 0,
+                                  FOREACH (n,v) IN t.@z DO    # sigmoid activation function
+                                    t.@a += (n -> exp(v)/(exp(v)+1) ),
+                                          a_i = exp(v)/(exp(v)+1),
+                                          @@loss += t.yvalue.get(n) * log(a_i) + (1-t.yvalue.get(n))*log(1-a_i)  #calculate loss
+                            END
+                                  ;
+              print Layer2;
+        
+              @@loss = -@@loss/m;
+              print @@loss;
+        
+        # Backpropagation
+        Layer2 = SELECT s
+                 FROM Layer2:s
 }
