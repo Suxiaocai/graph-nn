@@ -1,0 +1,37 @@
+USE GRAPH NN
+DROP QUERY insert_hidden
+
+CREATE QUERY insert_hidden(INT n_hidden, SET<VERTEX<inputLayer>> input, VERTEX<outputLayer> output) FOR GRAPH NN { 
+        INT i=0;
+        STRING pk;
+        ListAccum<DOUBLE> @@w, @@w2;
+        
+        @@w += -0.00416758;
+        @@w += -0.00056267;
+        @@w += -0.02136196;
+        @@w += 0.01640271;
+        @@w += -0.01793436;
+        @@w += -0.00841747;
+        @@w += 0.00502881;
+        @@w += -0.01245288;
+  
+        @@w2 += [-0.01057952, -0.00909008, 0.00551454, 0.02292208];
+        /*-0.01057952; 
+        @@w2 += -0.00909008; 
+        @@w2 += 0.00551454;  
+        @@w2 += 0.02292208;*/
+  
+        WHILE i<n_hidden DO
+                pk = "n"+ to_string(i);
+                INSERT INTO hiddenLayer VALUES(pk, i, [@@w.get(2*i), @@w.get(2*i+1)]);
+                INSERT INTO hidden_output VALUES (pk, output);
+                FOREACH v IN input DO
+                        INSERT INTO input_hidden VALUES (v, pk);
+                END;  
+                i = i + 1;
+        END;
+        y = {output};
+        y = SELECT s
+            FROM y:s
+            POST-ACCUM s.w = @@w2;
+}

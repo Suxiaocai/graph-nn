@@ -6,7 +6,7 @@ DROP JOB loader
 SET sys.data_root = "./data"
 
 CREATE LOADING JOB loader FOR GRAPH NN{
-   #     LOAD "$sys.data_root/dataX.csv" TO VERTEX inputLayer VALUES ($0, SPLIT($1, " ")) USING Header="false";
+        LOAD "$sys.data_root/dataX.csv" TO VERTEX inputLayer VALUES ($0, $1, SPLIT($2, " ")) USING Header="false";
 	LOAD "$sys.data_root/dataY.csv" TO VERTEX outputLayer VALUES ($0, SPLIT($1, " "),_) USING Header="false";
 }
 

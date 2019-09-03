@@ -1,32 +1,25 @@
 use graph NN
 
-CREATE QUERY shallow_nn() FOR GRAPH NN{ 
-  SumAccum<DOUBLE> @b, @@loss;
-        MapAccum<VERTEX, DOUBLE> @w;
-        MapAccum<INT, DOUBLE> @a, @z;
+CREATE QUERY shallow_nn(FLOAT learning_rate=1.2) FOR GRAPH NN{ 
+        SumAccum<DOUBLE> @b, @db, @@loss, @@meanA2, @@meanZ2;
+        MapAccum<VERTEX, DOUBLE> @w, @dw;
+        MapAccum<INT, DOUBLE> @a, @z, @dz;
         INT size0, size1, m=400;
         
         # Initialization
         Layer0 = {inputLayer.*};
         Layer1 = SELECT t
                  FROM Layer0:s -(input_hidden:e) -> :t
-                 ACCUM IF s.name == "x1" THEN
-                                 t.@w += (s -> t.w.get(0))
-                             ELSE
-                                 t.@w += (s -> t.w.get(1))
-                             END;
+                 ACCUM t.@w += (s -> t.w.get(s.xindex));
+        print Layer1.@w;
+  
         Layer2 = SELECT t
                  FROM Layer1:s -(hidden_output:e) -> :t
-                 ACCUM INT i=1,
-                             FOREACH val IN t.w DO
-                                 IF (s.name == "n1" AND i ==1) OR (s.name == "n2" AND i ==2) OR (s.name == "n3" AND i ==3) OR (s.name == "n4" AND i ==4) THEN
-                                     t.@w += (s -> val)
-                                 END,
-                                 i = i + 1
-                             END;
+                 ACCUM t.@w += (s -> t.w.get(s.hindex));
+        print Layer2.@w;
         size0 = Layer0.size();
         size1 = Layer1.size();
-        
+  
         # Propagation
         Layer1 = SELECT t
                  FROM Layer0:s -(input_hidden:e) -> :t
@@ -34,13 +27,14 @@ CREATE QUERY shallow_nn() FOR GRAPH NN{
                        INT i = 0,
                        FOREACH v IN s.xvalue DO   # iterate each sample
                            t.@z += (i -> wt * v + t.@b/size0),
-                                 #log(TRUE, s, i, wt, v, t.@b/size0),
+                           #log(TRUE, s, i, wt, v, t.@b/size0),
                            i = i + 1
                        END
                  POST-ACCUM FOREACH (n,v) IN t.@z DO    # tanh activation function
                                 t.@a += (n -> tanh(v))
                             END;
         
+  
         Layer2 = SELECT t
                  FROM Layer1:s -(hidden_output:e) -> :t
                  ACCUM DOUBLE wt = t.@w.get(s),
@@ -48,18 +42,67 @@ CREATE QUERY shallow_nn() FOR GRAPH NN{
                            t.@z += (n -> wt*v + t.@b/size1)
                        END
                  POST-ACCUM DOUBLE a_i = 0,
-                                  FOREACH (n,v) IN t.@z DO    # sigmoid activation function
+                            FOREACH (n,v) IN t.@z DO    # sigmoid activation function
                                     t.@a += (n -> exp(v)/(exp(v)+1) ),
-                                          a_i = exp(v)/(exp(v)+1),
-                                          @@loss += t.yvalue.get(n) * log(a_i) + (1-t.yvalue.get(n))*log(1-a_i)  #calculate loss
+                                    a_i = exp(v)/(exp(v)+1),
+                                    @@loss += t.yvalue.get(n) * log(a_i) + (1-t.yvalue.get(n))*log(1-a_i)  #calculate loss
                             END
-                                  ;
-              print Layer2;
-        
-              @@loss = -@@loss/m;
-              print @@loss;
+                            ;
+        Layer2 = SELECT s
+                 FROM Layer2:s
+                 ACCUM FOREACH (key, value) IN s.@a DO 
+                            @@meanA2 += value
+                       END,
+                       FOREACH (key, value) IN s.@z DO 
+                            @@meanZ2 += value
+                       END;
+        @@meanA2 = @@meanA2/m;
+        @@meanZ2 = @@meanZ2/m;
+        print @@meanA2, @@meanZ2;
+  
+        @@loss = -@@loss/m;
+        print @@loss;
         
         # Backpropagation
         Layer2 = SELECT s
                  FROM Layer2:s
+                 POST-ACCUM FOREACH (i, ai) IN s.@a DO
+                                    s.@dz+=(i -> ai-s.yvalue.get(i))   // dz[2] = a[2] - y
+                            END,
+                            FOREACH (i, dzi) IN s.@dz DO
+                                    s.@db += dzi
+                            END,
+                            s.@db = s.@db/m,
+                            s.@b = s.@b - learning_rate * s.@db;
+        print Layer2[Layer2.@dz] as dz2;
+        print Layer2[Layer2.@db] as db2;
+  
+  /*
+        Layer1 = SELECT t 
+                 FROM Layer2:s-(output_hidden:e)->:t
+                 ACCUM FOREACH (i, dzi) IN s.@dz DO 
+                               s.@dw += (t -> dzi*t.@a.get(i))
+                       END;
+        Layer1 = SELECT s 
+                 FROM Layer1:s-(hidden_input:e)->:t
+                 ACCUM FOREACH (i, dzi) IN s.@dz DO
+                               s.@dw += (t -> 1/m*dzi*t.xvalue.get(i))
+                       END
+                 POST-ACCUM FOREACH (i, dzi) IN s.@dz DO
+                                    s.@db += dzi/m 
+                            END,
+                            s.@b = s.@b - learning_rate*s.@db;
+  
+        print Layer1[Layer1.@dw] as dW1;
+        print Layer1[Layer1.@db] as db1; 
+        print Layer2[Layer2.@dw] as dW2;
+        
+  
+        print Layer1[Layer1.@w] as W1;
+        print Layer1[Layer1.@b] as b1; 
+        print Layer2[Layer2.@w] as W2;
+        print Layer2[Layer2.@b] as b2;
+        
+  */
+  
 }
