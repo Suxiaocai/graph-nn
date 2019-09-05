@@ -1,10 +1,10 @@
 use graph NN
-
 CREATE QUERY shallow_nn(FLOAT learning_rate=1.2) FOR GRAPH NN{ 
-        SumAccum<DOUBLE> @b, @db, @@loss, @@meanA2, @@meanZ2;
+        SumAccum<DOUBLE> @b, @db, @@loss, @@meanA2, @@meanZ2, @@meanA1, @@meanZ1;
         MapAccum<VERTEX, DOUBLE> @w, @dw;
         MapAccum<INT, DOUBLE> @a, @z, @dz;
-        INT size0, size1, m=400;
+        INT size0, size1, m=400; // m is the number of samples, size0 is the size of layer0, size1 is size of layer1
+      
         
         # Initialization
         Layer0 = {inputLayer.*};
@@ -33,7 +33,19 @@ CREATE QUERY shallow_nn(FLOAT learning_rate=1.2) FOR GRAPH NN{
                  POST-ACCUM FOREACH (n,v) IN t.@z DO    # tanh activation function
                                 t.@a += (n -> tanh(v))
                             END;
-        
+        print Layer0.xvalue;
+        print Layer1[Layer1.@z, Layer1.@w];
+        Layer1 = SELECT s
+                 FROM Layer1:s
+                 ACCUM FOREACH (key, value) IN s.@a DO 
+                            @@meanA1 += value
+                       END,
+                       FOREACH (key, value) IN s.@z DO 
+                            @@meanZ1 += value
+                       END;
+        @@meanA1 = @@meanA1/m/size1;
+        @@meanZ1 = @@meanZ1/m/size1;
+        print @@meanA1, @@meanZ1;
   
         Layer2 = SELECT t
                  FROM Layer1:s -(hidden_output:e) -> :t

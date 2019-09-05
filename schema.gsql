@@ -2,7 +2,7 @@ drop all
 
 CREATE VERTEX inputLayer(PRIMARY_ID id STRING, xindex INT, xvalue List<double>) WITH STATS="OUTDEGREE_BY_EDGETYPE"
 CREATE VERTEX hiddenLayer(PRIMARY_ID id STRING, hindex INT, w List<double>) WITH STATS="OUTDEGREE_BY_EDGETYPE"
-CREATE VERTEX outputLayer(PRIMARY_ID id STRING, yvalue List<double>, w List<double>) WITH STATS="OUTDEGREE_BY_EDGETYPE"
+CREATE VERTEX outputLayer(PRIMARY_ID id STRING, yindex INT, yvalue List<double>, w List<double>) WITH STATS="OUTDEGREE_BY_EDGETYPE"
 CREATE DIRECTED EDGE input_hidden(FROM inputLayer, To hiddenLayer) WITH REVERSE_EDGE="hidden_input"
 CREATE DIRECTED EDGE hidden_hidden(FROM hiddenLayer, To hiddenLayer) WITH REVERSE_EDGE="rev_hidden"
 CREATE DIRECTED EDGE hidden_output(FROM hiddenLayer, To outputLayer) WITH REVERSE_EDGE="output_hidden"
